@@ -459,3 +459,7 @@ def analyze_invoice(data: InvoiceData):
         "itc_blocked": not bool(features["gst_valid"]) or ensemble > 0.5,
         "gst_valid": bool(features["gst_valid"]),
     }
+    if __name__ == "__main__":
+      import uvicorn
+      port = int(os.environ.get("PORT", 8000))
+      uvicorn.run(app, host="0.0.0.0", port=port)
