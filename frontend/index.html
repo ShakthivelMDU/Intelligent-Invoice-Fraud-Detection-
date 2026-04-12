@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InvoiceGuard AI — Invoice Fraud Detection</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f7f4;--card:#fff;--border:#e4e2da;--text:#1a1a18;--muted:#6b6963;
+  --blue:#185FA5;--blue-l:#E6F1FB;--green:#3B6D11;--green-l:#EAF3DE;
+  --red:#A32D2D;--red-l:#FCEBEB;--amber:#854F0B;--amber-l:#FAEEDA;
+  --teal:#0F6E56;--teal-l:#E1F5EE;--r:10px;--rs:6px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.6}
+.app{max-width:980px;margin:0 auto;padding:1.5rem 1rem 4rem}
+.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.5rem}
+.logo{font-size:18px;font-weight:700;color:var(--blue)}
+.logo span{color:var(--text)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#ccc;display:inline-block;margin-right:5px}
+.status-dot.ok{background:#3B6D11}
+.status-dot.err{background:#A32D2D}
+.backend-url-bar{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--rs);padding:6px 10px;font-size:12px;flex-wrap:wrap}
+.backend-url-bar input{border:none;outline:none;font-size:12px;color:var(--text);background:transparent;min-width:260px;flex:1}
+.backend-url-bar button{padding:4px 10px;background:var(--blue);color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:640px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem}
+.section-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.875rem}
+.field{margin-bottom:.875rem}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.field input,.field select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--rs);font-size:13px;background:#fff;color:var(--text);outline:none}
+.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,95,165,.12)}
+.field .hint{font-size:11px;color:var(--muted);margin-top:2px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none}
+.tl{font-size:13px}.ts{font-size:11px;color:var(--muted)}
+.toggle{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#ccc;border-radius:10px;cursor:pointer;transition:.2s}
+.slider:before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.slider{background:var(--blue)}
+.toggle input:checked+.slider:before{transform:translateX(16px)}
+.btn-primary{width:100%;padding:11px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;transition:.15s;margin-top:.5rem}
+.btn-primary:hover{background:#0C447C}
+.btn-primary:disabled{opacity:.55;cursor:not-allowed}
+.ocr-zone{border:2px dashed var(--border);border-radius:var(--r);padding:1.5rem;text-align:center;cursor:pointer;transition:.15s;margin-bottom:.875rem}
+.ocr-zone:hover,.ocr-zone.drag{border-color:var(--blue);background:var(--blue-l)}
+.ocr-zone p{font-size:13px;color:var(--muted);margin-top:.5rem}
+.ocr-zone .file-name{font-size:12px;color:var(--blue);font-weight:500;margin-top:.25rem}
+.ocr-msg{padding:.75rem 1rem;border-radius:var(--rs);font-size:13px;margin-bottom:.875rem;display:none}
+.ocr-msg.loading{background:var(--blue-l);color:var(--blue)}
+.ocr-msg.success{background:var(--green-l);color:var(--green)}
+.ocr-msg.error{background:var(--red-l);color:var(--red)}
+.preset-row{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.preset-btn{padding:5px 12px;border:1px solid var(--border);border-radius:20px;font-size:12px;background:var(--card);color:var(--text);cursor:pointer;transition:.12s}
+.preset-btn:hover{border-color:var(--blue);color:var(--blue)}
+.result-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-top:1.25rem}
+.result-header{padding:1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.verdict-tag{padding:5px 16px;border-radius:20px;font-size:13px;font-weight:600}
+.vAPPROVE{background:var(--green-l);color:var(--green)}
+.vREVIEW{background:var(--amber-l);color:var(--amber)}
+.vESCALATE{background:#FAEEDA;color:#712B13}
+.vREJECT{background:var(--red-l);color:var(--red)}
+.score-num{font-size:42px;font-weight:700;line-height:1}
+.score-lbl{font-size:11px;color:var(--muted);text-align:right}
+.risk-wrap{padding:0 1.25rem .75rem}
+.risk-bg{height:6px;background:#f0ede6;border-radius:3px;overflow:hidden}
+.risk-fill{height:100%;border-radius:3px;transition:width .6s}
+.tabs{display:flex;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{padding:.75rem 1.25rem;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;color:var(--muted)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-content{display:none;padding:1rem 1.25rem}
+.tab-content.active{display:block}
+.flag-item{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.flag-item:last-child{border-bottom:none}
+.flag-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:6px}
+.flag-high{background:var(--red)}
+.flag-medium{background:var(--amber)}
+.flag-low{background:#888}
+.ok-item{display:flex;gap:10px;padding:6px 0;font-size:13px}
+.ok-check{color:var(--green);font-weight:600}
+.comp-item{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+.comp-item:last-child{border-bottom:none}
+.comp-icon{font-size:14px;flex-shrink:0}
+.feat-row{display:flex;align-items:center;gap:.75rem;padding:5px 0;font-size:12px}
+.feat-name{flex:1;color:var(--muted);text-transform:capitalize}
+.feat-bar-bg{flex:2;height:5px;background:#f0ede6;border-radius:2px;overflow:hidden}
+.feat-bar-fill{height:100%;border-radius:2px}
+.feat-val{width:50px;text-align:right;font-weight:500}
+.empty{color:var(--muted);font-size:13px;padding:.5rem 0}
+.score-row{font-size:12px;color:var(--muted);margin-top:4px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--blue);display:inline-block;animation:bounce .8s infinite alternate}
+@keyframes bounce{to{transform:translateY(-5px);opacity:.4}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="logo">Invoice<span>Guard</span> AI</div>
+    <div class="backend-url-bar">
+      <span id="status-dot" class="status-dot"></span>
+      <span id="status-text" style="color:var(--muted);font-size:12px">Backend:</span>
+      <input type="text" id="backend-url" placeholder="https://your-app.railway.app"
+        value="http://localhost:8000">
+      <button onclick="checkBackend()">Connect</button>
+    </div>
+  </div>
+
+  <!-- OCR upload -->
+  <div class="card" style="margin-bottom:1rem">
+    <div class="section-title">Step 1 — Upload invoice (OCR auto-fills the form)</div>
+    <div class="ocr-zone" id="ocr-zone"
+      ondragover="event.preventDefault();this.classList.add('drag')"
+      ondragleave="this.classList.remove('drag')"
+      ondrop="handleDrop(event)"
+      onclick="document.getElementById('file-inp').click()">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--muted)">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <p>Click or drag an invoice here (PDF, JPG, PNG)</p>
+      <div class="file-name" id="file-name"></div>
+    </div>
+    <input type="file" id="file-inp" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="handleFile(this.files[0])">
+    <div class="ocr-msg" id="ocr-msg"></div>
+    <button class="btn-primary" id="ocr-btn" onclick="runOCR()" disabled>
+      Extract fields with Claude AI
+    </button>
+    <div style="margin-top:.75rem">
+      <div class="section-title" style="margin-bottom:.5rem">Or load a test preset</div>
+      <div class="preset-row">
+        <button class="preset-btn" onclick="loadPreset('legit')">Legitimate invoice</button>
+        <button class="preset-btn" onclick="loadPreset('fraud1')">Fake vendor (fraud)</button>
+        <button class="preset-btn" onclick="loadPreset('fraud2')">Threshold stuffing</button>
+        <button class="preset-btn" onclick="loadPreset('fraud3')">Duplicate + urgency</button>
+        <button class="preset-btn" onclick="loadPreset('msme')">MSME overdue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="grid">
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="section-title">Vendor information</div>
+        <div class="field"><label>Vendor name</label><input id="vendor_name" placeholder="Infosys Ltd"></div>
+        <div class="field"><label>GSTIN</label><input id="vendor_gstin" placeholder="27AAAPZ2173H1ZM" maxlength="15"><div class="hint">15-character GST Identification Number</div></div>
+        <div class="field-row">
+          <div class="field"><label>Vendor age (days)</label><input id="vendor_age_days" type="number" placeholder="365"></div>
+          <div class="field"><label>Previous invoices</label><input id="vendor_invoice_count" type="number" placeholder="10"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem">
+        <div class="section-title">Invoice details</div>
+        <div class="field"><label>Invoice number</label><input id="invoice_number" placeholder="INV-2025-001"></div>
+        <div class="field-row">
+          <div class="field"><label>Invoice date</label><input id="invoice_date" type="date"></div>
+          <div class="field"><label>Due date</label><input id="due_date" type="date"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Amount (before GST) ₹</label><input id="invoice_amount" type="number" placeholder="100000"></div>
+          <div class="field"><label>GST amount ₹</label><input id="gst_amount" type="number" placeholder="18000"></div>
+        </div>
+        <div class="field"><label>Category</label>
+          <select id="category">
+            <option>IT Services</option><option>Cloud Services</option>
+            <option>Software License</option><option>Consulting</option>
+            <option>Hardware</option><option>Maintenance</option>
+            <option>Training</option><option>Other</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="section-title">Purchase Order &amp; Delivery</div>
+        <div class="field"><label>PO number</label><input id="po_number" placeholder="PO-8821 (leave blank if none)"></div>
+        <div class="field-row">
+          <div class="field"><label>PO amount ₹</label><input id="po_amount" type="number" placeholder="0"></div>
+          <div class="field"><label>Qty variance %</label><input id="qty_variance_pct" type="number" placeholder="0"></div>
+        </div>
+        <div class="field"><label>GRN number</label><input id="grn_number" placeholder="GRN-441 (leave blank if none)"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem">
+        <div class="section-title">Risk signals</div>
+        <div class="field-row">
+          <div class="field"><label>Invoices from vendor (30d)</label><input id="same_vendor_30d_count" type="number" placeholder="0"></div>
+          <div class="field"><label>Duplicate score (0–100)</label><input id="duplicate_score" type="number" placeholder="0"></div>
+        </div>
+        <div class="field"><label>Address match score (0–100)</label><input id="address_match_score" type="number" placeholder="85"></div>
+        <div class="field"><label>MSME days since receipt</label><input id="msme_days_overdue" type="number" placeholder="0"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem">
+        <div class="section-title">Invoice flags</div>
+        <div class="toggle-row"><div><div class="tl">MSME vendor</div><div class="ts">Udyam-registered supplier</div></div><label class="toggle"><input type="checkbox" id="is_msme"><span class="slider"></span></label></div>
+        <div class="toggle-row"><div><div class="tl">Payment urgency</div><div class="ts">Vendor demanding immediate payment</div></div><label class="toggle"><input type="checkbox" id="payment_urgency"><span class="slider"></span></label></div>
+        <div class="toggle-row"><div><div class="tl">Has line items</div><div class="ts">Invoice shows itemized breakdown</div></div><label class="toggle"><input type="checkbox" id="has_line_items" checked><span class="slider"></span></label></div>
+        <div class="toggle-row"><div><div class="tl">Has bank details</div><div class="ts">Bank account printed on invoice</div></div><label class="toggle"><input type="checkbox" id="has_bank_details" checked><span class="slider"></span></label></div>
+        <div class="toggle-row"><div><div class="tl">Weekend submission</div><div class="ts">Invoice submitted Saturday or Sunday</div></div><label class="toggle"><input type="checkbox" id="submitted_weekend"><span class="slider"></span></label></div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-primary" id="analyze-btn" onclick="analyze()">
+    Analyze invoice with ML Model
+  </button>
+
+  <div id="result-area"></div>
+</div>
+
+<script>
+// ── Config ──
+let BACKEND = localStorage.getItem('backend_url') || 'http://localhost:8000';
+document.getElementById('backend-url').value = BACKEND;
+
+let currentFile = null;
+
+// ── Backend connection check ──
+async function checkBackend() {
+  BACKEND = document.getElementById('backend-url').value.trim().replace(/\/$/, '');
+  localStorage.setItem('backend_url', BACKEND);
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.className = 'status-dot';
+  txt.textContent = 'Checking...';
+  try {
+    const r = await fetch(BACKEND + '/api/health');
+    const d = await r.json();
+    dot.className = 'status-dot ok';
+    txt.textContent = `Connected — OCR: ${d.ocr_available ? 'ready' : 'no key'} | Model: ${d.model_loaded ? 'loaded' : 'fallback'}`;
+  } catch(e) {
+    dot.className = 'status-dot err';
+    txt.textContent = 'Backend not reachable — check URL above';
+  }
+}
+checkBackend();
+
+// ── File handling ──
+function handleFile(file) {
+  if (!file) return;
+  currentFile = file;
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('ocr-btn').disabled = false;
+  document.getElementById('ocr-msg').style.display = 'none';
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('ocr-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+}
+
+// ── OCR ──
+async function runOCR() {
+  if (!currentFile) return;
+  const msg = document.getElementById('ocr-msg');
+  const btn = document.getElementById('ocr-btn');
+  btn.disabled = true;
+  msg.className = 'ocr-msg loading';
+  msg.style.display = 'block';
+  msg.innerHTML = '<span class="dot"></span><span class="dot" style="animation-delay:.2s;margin-left:3px"></span><span class="dot" style="animation-delay:.4s;margin-left:3px"></span> Sending to Claude AI via backend...';
+
+  const form = new FormData();
+  form.append('file', currentFile);
+
+  try {
+    const r = await fetch(BACKEND + '/api/ocr', { method: 'POST', body: form });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'OCR failed');
+    fillForm(data.data);
+    const conf = data.data.confidence ?? 85;
+    msg.className = 'ocr-msg success';
+    msg.innerHTML = `✓ Fields extracted — confidence: ${conf}%  ·  Review the form below then click Analyze`;
+  } catch(e) {
+    msg.className = 'ocr-msg error';
+    msg.innerHTML = `<b>OCR failed:</b> ${e.message}<br><span style="font-size:12px">Fill the form manually and click Analyze — the ML model works without OCR.</span>`;
+  }
+  btn.disabled = false;
+}
+
+// ── Fill form from OCR data ──
+function fillForm(d) {
+  const set = (id, val) => { if (val === null || val === undefined) return; const el = document.getElementById(id); if (!el) return; if (el.type === 'checkbox') el.checked = !!val; else el.value = val; };
+  set('vendor_name', d.vendor_name);
+  set('vendor_gstin', d.vendor_gstin);
+  set('invoice_number', d.invoice_number);
+  set('invoice_date', d.invoice_date);
+  set('due_date', d.due_date);
+  set('invoice_amount', d.invoice_amount);
+  set('gst_amount', d.gst_amount);
+  set('category', d.category);
+  set('is_msme', d.is_msme);
+  set('has_line_items', d.has_line_items);
+  set('has_bank_details', d.has_bank_details);
+}
+
+// ── Presets ──
+const PRESETS = {
+  legit: {vendor_name:'Infosys Ltd',vendor_gstin:'27AAAPZ2173H1ZM',vendor_age_days:1825,vendor_invoice_count:48,invoice_number:'INF-2025-0341',invoice_date:'2025-03-10',invoice_amount:285000,gst_amount:51300,due_date:'2025-04-09',category:'IT Services',po_number:'PO-8821',po_amount:285000,grn_number:'GRN-441',qty_variance_pct:0,is_msme:false,payment_urgency:false,has_line_items:true,has_bank_details:true,submitted_weekend:false,same_vendor_30d_count:2,duplicate_score:0,address_match_score:98,msme_days_overdue:0},
+  fraud1: {vendor_name:'QuickServe IT',vendor_gstin:'BADGSTIN12345XY',vendor_age_days:12,vendor_invoice_count:2,invoice_number:'QS-001',invoice_date:'2025-03-14',invoice_amount:89500,gst_amount:16110,due_date:'2025-03-16',category:'Consulting',po_number:'',po_amount:0,grn_number:'',qty_variance_pct:0,is_msme:true,payment_urgency:true,has_line_items:false,has_bank_details:true,submitted_weekend:false,same_vendor_30d_count:1,duplicate_score:0,address_match_score:25,msme_days_overdue:5},
+  fraud2: {vendor_name:'TechBridge Pvt',vendor_gstin:'29ABCDE1234F1Z5',vendor_age_days:95,vendor_invoice_count:4,invoice_number:'TB-2025-09',invoice_date:'2025-03-08',invoice_amount:49800,gst_amount:8964,due_date:'2025-04-07',category:'Consulting',po_number:'',po_amount:0,grn_number:'GRN-501',qty_variance_pct:18,is_msme:false,payment_urgency:false,has_line_items:true,has_bank_details:true,submitted_weekend:true,same_vendor_30d_count:6,duplicate_score:10,address_match_score:60,msme_days_overdue:0},
+  fraud3: {vendor_name:'FastPay Solutions',vendor_gstin:'07AADCF2345N1ZX',vendor_age_days:35,vendor_invoice_count:3,invoice_number:'FP-2025-22',invoice_date:'2025-03-15',invoice_amount:125000,gst_amount:9500,due_date:'2025-03-16',category:'Other',po_number:'',po_amount:0,grn_number:'',qty_variance_pct:0,is_msme:false,payment_urgency:true,has_line_items:false,has_bank_details:false,submitted_weekend:false,same_vendor_30d_count:8,duplicate_score:75,address_match_score:20,msme_days_overdue:0},
+  msme: {vendor_name:'Micro Gadgets Ltd',vendor_gstin:'33AAEPM1234C1ZQ',vendor_age_days:730,vendor_invoice_count:22,invoice_number:'MG-2025-11',invoice_date:'2025-02-01',invoice_amount:67000,gst_amount:12060,due_date:'2025-03-18',category:'Hardware',po_number:'PO-7701',po_amount:67000,grn_number:'GRN-299',qty_variance_pct:1,is_msme:true,payment_urgency:false,has_line_items:true,has_bank_details:true,submitted_weekend:false,same_vendor_30d_count:1,duplicate_score:0,address_match_score:92,msme_days_overdue:42},
+};
+function loadPreset(key) {
+  const p = PRESETS[key];
+  Object.entries(p).forEach(([k,v]) => {
+    const el = document.getElementById(k);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = v;
+  });
+}
+
+// ── Read form ──
+function readForm() {
+  const v = id => document.getElementById(id)?.value || '';
+  const cb = id => document.getElementById(id)?.checked || false;
+  return {
+    vendor_name: v('vendor_name'), vendor_gstin: v('vendor_gstin'),
+    vendor_age_days: parseInt(v('vendor_age_days')) || 365,
+    vendor_invoice_count: parseInt(v('vendor_invoice_count')) || 10,
+    invoice_number: v('invoice_number'), invoice_date: v('invoice_date'),
+    invoice_amount: parseFloat(v('invoice_amount')) || 0,
+    gst_amount: parseFloat(v('gst_amount')) || 0,
+    due_date: v('due_date'), category: v('category'),
+    po_number: v('po_number'), po_amount: parseFloat(v('po_amount')) || 0,
+    grn_number: v('grn_number'),
+    qty_variance_pct: parseFloat(v('qty_variance_pct')) || 0,
+    is_msme: cb('is_msme'), payment_urgency: cb('payment_urgency'),
+    has_line_items: cb('has_line_items'), has_bank_details: cb('has_bank_details'),
+    submitted_weekend: cb('submitted_weekend'),
+    same_vendor_30d_count: parseInt(v('same_vendor_30d_count')) || 0,
+    duplicate_score: parseFloat(v('duplicate_score')) || 0,
+    address_match_score: parseFloat(v('address_match_score')) || 85,
+    msme_days_overdue: parseInt(v('msme_days_overdue')) || 0,
+  };
+}
+
+// ── Analyze ──
+async function analyze() {
+  const btn = document.getElementById('analyze-btn');
+  const ra = document.getElementById('result-area');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  ra.innerHTML = '<div class="result-card" style="padding:2rem;text-align:center;color:var(--muted)"><span class="dot"></span><span class="dot" style="animation-delay:.2s;margin-left:3px"></span><span class="dot" style="animation-delay:.4s;margin-left:3px"></span> Running ML model...</div>';
+
+  const inv = readForm();
+
+  try {
+    const r = await fetch(BACKEND + '/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(inv),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Analysis failed');
+    renderResult(data);
+  } catch(e) {
+    ra.innerHTML = `<div class="result-card" style="padding:1.25rem;background:var(--red-l);color:var(--red)">
+      <b>Analysis failed:</b> ${e.message}<br>
+      <span style="font-size:12px">Make sure your backend is running and the URL is correct above.</span>
+    </div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Analyze invoice with ML Model';
+}
+
+// ── Render result ──
+function renderResult(d) {
+  const sc = d.fraud_score;
+  const verd = d.verdict;
+  const col = sc < 25 ? 'var(--green)' : sc < 50 ? 'var(--amber)' : 'var(--red)';
+  const FI = d.feature_importance || {};
+  const TF = d.top_features || {};
+
+  const featRows = Object.entries(FI).sort((a,b) => b[1]-a[1]).map(([k, imp]) => {
+    const val = TF[k] ?? 0;
+    const pct = Math.round(imp * 500);
+    const RISKY = new Set(['no_po_no_grn','high_duplicate_score','urgency_no_po','new_vendor_high_amount','gst_and_format_issues','near_threshold']);
+    const SAFE = new Set(['vendor_trust_score','has_po','has_grn','po_amount_match','gst_valid']);
+    const barCol = RISKY.has(k) && val > 0 ? '#E24B4A' : SAFE.has(k) && val > 0.5 ? '#3B6D11' : '#888';
+    return `<div class="feat-row">
+      <div class="feat-name">${k.replace(/_/g,' ')}</div>
+      <div class="feat-bar-bg"><div class="feat-bar-fill" style="width:${pct}%;background:${barCol}"></div></div>
+      <div class="feat-val" style="color:${barCol}">${typeof val==='number'?val.toFixed(2):val}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('result-area').innerHTML = `
+  <div class="result-card">
+    <div class="result-header">
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">ML Verdict</div>
+        <div class="verdict-tag v${verd}">${verd}</div>
+        <div class="score-row">RF: ${d.rf_score}% · GB: ${d.gb_score}% · Ensemble: ${sc}%</div>
+      </div>
+      <div style="text-align:right">
+        <div class="score-num" style="color:${col}">${sc}%</div>
+        <div class="score-lbl">fraud risk</div>
+      </div>
+    </div>
+    <div class="risk-wrap">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+        <span>Low</span><span>Medium</span><span>High</span>
+      </div>
+      <div class="risk-bg"><div class="risk-fill" style="width:${sc}%;background:${col}"></div></div>
+    </div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab(0,this)">Fraud flags (${d.flags.length})</div>
+      <div class="tab" onclick="switchTab(1,this)">Positive signals (${d.positives.length})</div>
+      <div class="tab" onclick="switchTab(2,this)">Compliance</div>
+      <div class="tab" onclick="switchTab(3,this)">Feature weights</div>
+    </div>
+    <div class="tab-content active" id="tc0">
+      ${d.flags.length ? d.flags.map(f=>`<div class="flag-item"><div class="flag-dot flag-${f.level}"></div><div>${f.msg}</div></div>`).join('') : '<div class="empty">No fraud flags detected</div>'}
+    </div>
+    <div class="tab-content" id="tc1">
+      ${d.positives.length ? d.positives.map(p=>`<div class="ok-item"><span class="ok-check">✓</span><span>${p}</span></div>`).join('') : '<div class="empty">No positive signals</div>'}
+    </div>
+    <div class="tab-content" id="tc2">
+      ${d.compliance.map(c=>`<div class="comp-item"><span class="comp-icon">${c.type==='ok'?'✓':c.type==='danger'?'✕':'⚡'}</span><span style="color:${c.type==='ok'?'var(--green)':c.type==='danger'?'var(--red)':'var(--amber)'}">${c.msg}</span></div>`).join('')}
+    </div>
+    <div class="tab-content" id="tc3">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:.75rem">Top features by importance — bar = weight, value = extracted signal for this invoice</div>
+      ${featRows}
+    </div>
+  </div>`;
+}
+
+function switchTab(n, el) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tc'+n).classList.add('active');
+}
+</script>
+</body>
+</html>
