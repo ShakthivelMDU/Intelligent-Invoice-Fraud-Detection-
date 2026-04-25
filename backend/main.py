@@ -1,8 +1,4 @@
-import json
-import math
-import os
-import re
-import base64
+import json, math, os, re, base64, io
 from typing import Optional
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -73,6 +69,155 @@ def validate_gstin(g):
     if not g: return False
     return bool(re.match(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$', str(g).strip().upper()))
 
+# ══════════════════════════════════════════════════════════
+# OCR — THREE METHODS, NO EXTERNAL TOOLS NEEDED
+# Method 1: pdfplumber  (best — for digital PDFs)
+# Method 2: PyPDF2      (fallback for digital PDFs)
+# Method 3: pytesseract (for scanned images — optional)
+# ══════════════════════════════════════════════════════════
+
+def extract_text_pdf(pdf_bytes):
+    """Extract text from digital PDF using pdfplumber — no Tesseract needed."""
+    text = ""
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages[:2]:  # first 2 pages only
+                t = page.extract_text()
+                if t:
+                    text += t + "\n"
+        if text.strip():
+            return text
+    except Exception as e:
+        print(f"pdfplumber failed: {e}")
+
+    # Fallback to PyPDF2
+    try:
+        import PyPDF2
+        reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+        for page in reader.pages[:2]:
+            text += page.extract_text() or ""
+        if text.strip():
+            return text
+    except Exception as e:
+        print(f"PyPDF2 failed: {e}")
+
+    return text
+
+def extract_text_image(image_bytes):
+    """Extract text from image — tries pytesseract if installed."""
+    try:
+        import pytesseract
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+        return pytesseract.image_to_string(img, config='--oem 3 --psm 6')
+    except ImportError:
+        return "IMAGE_OCR_UNAVAILABLE: Install tesseract for image OCR. PDF invoices work without it."
+    except Exception as e:
+        return f"IMAGE_OCR_ERROR: {str(e)}"
+
+def parse_invoice_text(text):
+    """Parse raw text into structured invoice fields using regex."""
+    result = {
+        "vendor_name": None, "vendor_gstin": None, "invoice_number": None,
+        "invoice_date": None, "due_date": None, "invoice_amount": None,
+        "gst_amount": None, "total_amount": None, "po_number": None,
+        "category": "IT Services", "has_line_items": False, "has_bank_details": False,
+        "is_msme": False, "payment_terms": None, "vendor_address": None,
+        "buyer_name": None, "confidence": 55,
+    }
+
+    if not text or "OCR_UNAVAILABLE" in text or "OCR_ERROR" in text:
+        result["confidence"] = 0
+        return result
+
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+
+    # GSTIN
+    gstin = re.search(r'\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z])\b', text.upper())
+    if gstin:
+        result["vendor_gstin"] = gstin.group(1)
+        result["confidence"] += 15
+
+    # Invoice number
+    for pat in [r'invoice\s*(?:no|number|#)[.:\s]*([A-Z0-9\-/]+)',
+                r'inv\.?\s*(?:no|#)[.:\s]*([A-Z0-9\-/]+)',
+                r'bill\s*(?:no|number)[.:\s]*([A-Z0-9\-/]+)']:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            result["invoice_number"] = m.group(1).strip()
+            result["confidence"] += 10
+            break
+
+    # Dates — DD/MM/YYYY or YYYY-MM-DD
+    dates = re.findall(r'\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})\b', text)
+    if dates:
+        result["invoice_date"] = dates[0]
+        if len(dates) > 1:
+            result["due_date"] = dates[1]
+
+    # Total amount
+    for pat in [r'(?:grand\s*total|total\s*amount|amount\s*payable|net\s*payable)[:\s]*(?:rs\.?|inr|₹)?\s*([\d,]+\.?\d*)',
+                r'(?:total)[:\s]*(?:rs\.?|₹)\s*([\d,]+\.?\d*)']:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            try:
+                result["total_amount"] = float(m.group(1).replace(',', ''))
+                result["confidence"] += 10
+                break
+            except: pass
+
+    # GST
+    gst_total = 0.0
+    for m in re.finditer(r'(?:igst|cgst|sgst|gst)[^:]*[:\s]*(?:rs\.?|₹)?\s*([\d,]+\.?\d*)', text, re.IGNORECASE):
+        try: gst_total += float(m.group(1).replace(',', ''))
+        except: pass
+    if gst_total > 0:
+        result["gst_amount"] = round(gst_total, 2)
+        result["confidence"] += 5
+
+    # Calculate invoice amount
+    if result["total_amount"] and result["gst_amount"]:
+        result["invoice_amount"] = round(result["total_amount"] - result["gst_amount"], 2)
+    elif result["total_amount"]:
+        result["invoice_amount"] = round(result["total_amount"] / 1.18, 2)
+        result["gst_amount"] = round(result["total_amount"] - result["invoice_amount"], 2)
+
+    # PO number
+    po = re.search(r'(?:p\.?o\.?|purchase\s*order)\s*(?:no|number|#)?[.:\s]*([A-Z0-9\-/]+)', text, re.IGNORECASE)
+    if po:
+        result["po_number"] = po.group(1).strip()
+
+    # Bank details
+    if re.search(r'(?:bank|account\s*no|ifsc|neft|rtgs|upi)', text, re.IGNORECASE):
+        result["has_bank_details"] = True
+
+    # Line items — multiple price rows
+    if len(re.findall(r'(?:rs\.?|₹)\s*[\d,]+', text, re.IGNORECASE)) > 3:
+        result["has_line_items"] = True
+
+    # MSME
+    if re.search(r'(?:msme|udyam|udyog\s*aadhaar)', text, re.IGNORECASE):
+        result["is_msme"] = True
+
+    # Vendor name — first meaningful line
+    for line in lines[:6]:
+        if len(line) > 4 and not re.match(r'^[\d\s\-/₹]+$', line) and 'invoice' not in line.lower():
+            result["vendor_name"] = line[:80]
+            break
+
+    # Category
+    tl = text.lower()
+    if any(w in tl for w in ['software','saas','license','subscription']): result["category"] = "Software License"
+    elif any(w in tl for w in ['cloud','aws','azure','hosting']): result["category"] = "Cloud Services"
+    elif any(w in tl for w in ['consulting','advisory','consultancy']): result["category"] = "Consulting"
+    elif any(w in tl for w in ['hardware','laptop','computer','equipment']): result["category"] = "Hardware"
+    elif any(w in tl for w in ['maintenance','support','amc']): result["category"] = "Maintenance"
+    elif any(w in tl for w in ['training','workshop','course']): result["category"] = "Training"
+
+    result["confidence"] = min(result["confidence"], 92)
+    return result
+
 def extract_features(inv):
     amount = float(inv.get("invoice_amount") or 0)
     gst_amt = float(inv.get("gst_amount") or 0)
@@ -107,7 +252,7 @@ def extract_features(inv):
     try:
         due = datetime.strptime(str(inv.get("due_date", "")), "%Y-%m-%d")
         days_to_due = max(0, (due - datetime.now()).days)
-    except Exception: pass
+    except: pass
     dup_raw = float(inv.get("duplicate_score") or 0)
     dup_score = min(1.0, dup_raw / 100.0 if dup_raw > 1 else dup_raw)
     same_30d = int(inv.get("same_vendor_30d_count") or 0)
@@ -137,7 +282,7 @@ def generate_flags(f, prob):
     if not f["has_grn"]: flags.append({"level":"high","msg":"No Goods Receipt Note — delivery not confirmed"})
     if not f["gst_valid"]: flags.append({"level":"high","msg":f"GSTIN '{f['_gstin'].upper() or 'missing'}' failed validation"})
     if f["_vendor_age"] < 60: flags.append({"level":"high","msg":f"Vendor registered only {f['_vendor_age']} days ago"})
-    if f["near_threshold"]: flags.append({"level":"medium","msg":f"Amount near approval threshold"})
+    if f["near_threshold"]: flags.append({"level":"medium","msg":"Amount near approval threshold"})
     if f["_dup_score"] > 0.5: flags.append({"level":"high","msg":f"Duplicate similarity {round(f['_dup_score']*100)}%"})
     if f["urgency_no_po"]: flags.append({"level":"high","msg":"Urgent payment demand with no PO — BEC attack pattern"})
     if f["submitted_weekend"]: flags.append({"level":"low","msg":"Invoice submitted on a weekend"})
@@ -161,34 +306,21 @@ def generate_flags(f, prob):
 
 @app.get("/api/health")
 def health():
-    return {"status":"ok","model_loaded":MODEL is not None,"ocr_available":bool(os.getenv("ANTHROPIC_API_KEY"))}
+    return {"status":"ok","model_loaded":MODEL is not None,"ocr_available":True,"ocr_engine":"pdfplumber+regex"}
 
 @app.post("/api/ocr")
 async def ocr_invoice(file: UploadFile = File(...)):
-    api_key = os.getenv("ANTHROPIC_API_KEY","")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not set on server")
-    try:
-        import anthropic as ant
-        client = ant.Anthropic(api_key=api_key)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Anthropic client error: {str(e)}")
-    allowed = ["application/pdf","image/jpeg","image/png","image/webp"]
+    allowed = ["application/pdf","image/jpeg","image/png","image/webp","image/jpg"]
     if file.content_type not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
     content = await file.read()
-    b64 = base64.standard_b64encode(content).decode("utf-8")
-    is_pdf = file.content_type == "application/pdf"
-    content_item = ({"type":"document","source":{"type":"base64","media_type":"application/pdf","data":b64}} if is_pdf
-                    else {"type":"image","source":{"type":"base64","media_type":file.content_type,"data":b64}})
-    prompt = 'Extract all invoice fields and return ONLY valid JSON. No markdown. Fields: vendor_name, vendor_gstin, invoice_number, invoice_date (YYYY-MM-DD), due_date, invoice_amount (number), gst_amount (number), total_amount (number), po_number, category, has_line_items (bool), has_bank_details (bool), is_msme (bool), payment_terms, vendor_address, buyer_name, confidence (0-100).'
     try:
-        response = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=1024,
-            messages=[{"role":"user","content":[content_item,{"type":"text","text":prompt}]}])
-        raw = response.content[0].text.strip().replace("```json","").replace("```","").strip()
-        return {"success":True,"data":json.loads(raw)}
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=422, detail=f"AI response not valid JSON: {str(e)}")
+        if file.content_type == "application/pdf":
+            raw_text = extract_text_pdf(content)
+        else:
+            raw_text = extract_text_image(content)
+        parsed = parse_invoice_text(raw_text)
+        return {"success": True, "data": parsed, "engine": "pdfplumber+regex"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
@@ -237,18 +369,13 @@ def analyze_invoice(data: InvoiceData):
     verdict = "APPROVE" if ensemble < 0.25 else "REVIEW" if ensemble < 0.50 else "ESCALATE" if ensemble < 0.75 else "REJECT"
     explanation = generate_flags(features, ensemble)
     return {
-        "success": True,
-        "fraud_score": round(ensemble * 100, 1),
-        "rf_score": round(rf_prob * 100, 1),
-        "gb_score": round(gb_prob * 100, 1),
-        "verdict": verdict,
-        "flags": explanation["flags"],
-        "positives": explanation["positives"],
-        "compliance": explanation["compliance"],
+        "success": True, "fraud_score": round(ensemble * 100, 1),
+        "rf_score": round(rf_prob * 100, 1), "gb_score": round(gb_prob * 100, 1),
+        "verdict": verdict, "flags": explanation["flags"],
+        "positives": explanation["positives"], "compliance": explanation["compliance"],
         "feature_importance": FEATURE_IMPORTANCE,
         "top_features": {k: round(float(features.get(k, 0)), 4) for k in FEATURE_IMPORTANCE},
-        "is_msme": bool(features["is_msme"]),
-        "msme_days_overdue": features["msme_days_overdue"],
+        "is_msme": bool(features["is_msme"]), "msme_days_overdue": features["msme_days_overdue"],
         "itc_blocked": not bool(features["gst_valid"]) or ensemble > 0.5,
         "gst_valid": bool(features["gst_valid"]),
     }
