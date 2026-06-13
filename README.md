@@ -201,10 +201,16 @@ Research gap filled: No published paper combines company-level ML fraud scoring 
 ---
 
 ## Future Improvements
- PostgreSQL database to log all analyzed invoices
- AP team labeling UI for confirmed fraud/legit cases
- Model retraining pipeline with real-world labeled data
- Batch invoice upload (CSV)
+
+* PostgreSQL database to log all analyzed invoices
+* AP team labeling UI for confirmed fraud/legitimate cases
+* Model retraining pipeline with real-world labeled data
+* Batch invoice upload and bulk fraud analysis (CSV/Excel)
+* Vendor risk profiling dashboard
+* Real-time anomaly detection alerts
+* Role-based authentication and audit logs
+* Advanced OCR using multimodal LLMs
+
 ---
 
 ## Author
