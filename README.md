@@ -100,8 +100,8 @@ Intelligent-Invoice-Fraud-Detection/
 |   |-- main.py                 <- FastAPI server
 |   |-- model_weights.json      <- Trained RF + GB model
 |   |-- requirements.txt        <- Python dependencies
-|   |-- Procfile                <- Railway start command
-|   `-- nixpacks.toml           <- Railway build config
+|   |-- Procfile                <- vercel start command
+|   `-- nixpacks.toml           <- vercel build config
 |
 `-- frontend/
     `-- index.html              <- Browser UI
@@ -123,10 +123,50 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Backend: http://localhost:8000
-Health check: http://localhost:8000/api/health
+## Live Demo
 
-Open frontend/index.html in browser, connect to http://localhost:8000
+Frontend: https://invoicedetector.netlify.app
+
+Backend API: https://intelligent-invoice-fraud-detection-3ja7srxqn.vercel.app
+
+Health Check:
+https://intelligent-invoice-fraud-detection-3ja7srxqn.vercel.app/api/health
+
+---
+
+## Local Development
+
+### Backend
+
+Run the FastAPI server:
+
+```bash
+uvicorn main:app --reload
+```
+
+Backend URL:
+http://localhost:8000
+
+Health Check:
+http://localhost:8000/api/health
+
+### Frontend
+
+Open:
+
+```text
+frontend/index.html
+```
+
+in your browser.
+
+Connect the frontend to:
+
+```text
+http://localhost:8000
+```
+
+when running locally.
 
 ---
 
