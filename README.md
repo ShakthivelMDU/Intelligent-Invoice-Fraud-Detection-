@@ -2,7 +2,7 @@
 ### Using Ensemble Machine Learning, OCR and Automated GST Compliance — A Production-Ready AI System
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-invoicedetector.netlify.app-blue?style=for-the-badge)](https://invoicedetector.netlify.app)
-[![Backend](https://img.shields.io/badge/Backend-Railway-purple?style=for-the-badge)](https://intelligent-invoice-fraud-detection-production.up.railway.app/api/health)
+[![Backend](https://img.shields.io/badge/Backend-vercel-purple?style=for-the-badge)](https://intelligent-invoice-fraud-detection-production.up.vercel.app/api/health)
 [![Python](https://img.shields.io/badge/Python-3.12-green?style=for-the-badge&logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal?style=for-the-badge)](https://fastapi.tiangolo.com)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-ML-orange?style=for-the-badge)](https://scikit-learn.org)
