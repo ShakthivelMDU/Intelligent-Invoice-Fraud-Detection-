@@ -200,14 +200,11 @@ Research gap filled: No published paper combines company-level ML fraud scoring 
 
 ---
 
-## Future Scope
-
-- SHAP / LIME explainability for audit compliance
-- SAP and Tally Prime ERP integration
-- Federated learning across multiple companies
-- Graph Neural Networks for fraud ring detection
-- Mobile app for manager approvals
-
+## Future Improvements
+ PostgreSQL database to log all analyzed invoices
+ AP team labeling UI for confirmed fraud/legit cases
+ Model retraining pipeline with real-world labeled data
+ Batch invoice upload (CSV)
 ---
 
 ## Author
